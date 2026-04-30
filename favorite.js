@@ -27,9 +27,6 @@
                 Lampa.Lang.translate('title_action'),
                 Lampa.Lang.translate('settings_input_links')
             ].includes(e?.active?.title)) {
-                console.log('Menu items:', e.active.items);
-                console.log('Card data:', lastCardData);
-
                 e.active.items = e.active.items
                     .map((item) => status.includes(item.where) || status.includes(item.type) 
                         ? {

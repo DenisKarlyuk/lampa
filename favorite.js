@@ -33,10 +33,12 @@
                             title: item.title,
                             where: item.where,
                             type: item.type,
-                            onSelect: (e, w) => {
-                                let card = Lampa.Activity.active()
-                                console.log('Selected card data:', lastCardData, card);
-                                Lampa.Favorite.toggle(item.where, lastCardData);
+                            onSelect: (e) => {
+                                const active = Lampa.Activity.active()
+                                const card = (active && active.card) || lastCardData;
+                                if (card) {
+                                    Lampa.Favorite.toggle(item.where || item.type, card);
+                                }
                             },
                         } : item
                     ).filter((item) => (

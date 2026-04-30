@@ -1,62 +1,149 @@
 (function () {
     'use strict';
-    const status = ['look', 'viewed', 'scheduled', 'thrown'];
-    const favorite = ['book', 'like', 'wath', 'history'];
-    let lastCardData = null;
 
-    function init() {
-        if (!window.Lampa || !Lampa.Select || !Lampa.Select.listener) {
-            return;
+    var STATUS_TYPES = ['look', 'viewed', 'scheduled', 'continued', 'thrown'];
+    var FAVORITE_TYPES = ['book', 'like', 'wath', 'history'];
+    var lastCardData = null;
+
+    var STATUS_COLORS = {
+        look:      '#5DBFF5',
+        viewed:    '#FFD028',
+        scheduled: '#ffffff',
+        thrown:    '#E54747',
+        continued: '#be95ff'
+    };
+
+    function addStyles() {
+        var rules = [
+            '.full-start__custom-status {',
+            '    display: inline-block;',
+            '    font-size: 1.2em;',
+            '    padding: 0.3em;',
+            '    border-radius: 0.25em;',
+            '    border: 0.12em solid currentColor;',
+            '    background: rgba(0, 0, 0, 0.15);',
+            '    margin-right: 0.5em;',
+            '    white-space: nowrap;',
+            '    vertical-align: middle;',
+            '    font-weight: 500;',
+            '}',
+            '.full-start__custom-status.hide { display: none; }',
+            '.full-start__custom-status--look      { color: #5DBFF5; }',
+            '.full-start__custom-status--viewed    { color: #FFD028; }',
+            '.full-start__custom-status--scheduled { color: #ffffff; }',
+            '.full-start__custom-status--thrown    { color: #E54747; }',
+            '.full-start__custom-status--continued { color: #be95ff; }'
+        ].join('\n');
+
+        $('<style>' + rules + '</style>').appendTo('head');
+    }
+
+    function getActiveCard() {
+        var active = Lampa.Activity.active();
+        return active && active.card;
+    }
+
+    function updateFullStatus() {
+        var active = Lampa.Activity.active();
+        if (!active || active.component !== 'full' || !active.card) return;
+
+        var body       = $(active.activity.body);
+        var favStatus  = Lampa.Favorite.check(active.card);
+        var activeMark = null;
+
+        for (var i = 0; i < STATUS_TYPES.length; i++) {
+            if (favStatus[STATUS_TYPES[i]]) {
+                activeMark = STATUS_TYPES[i];
+                break;
+            }
         }
 
-        const originalEmit = Lampa.Emit.prototype.emit;
+        var customStatus = body.find('.full-start__custom-status');
 
-        Lampa.Emit.prototype.emit = function (event) {
-            if (event === 'menu' && this.data) {
-                lastCardData = this.data;
+        if (activeMark) {
+            if (!customStatus.length) {
+                customStatus = $('<div class="full-start__custom-status"></div>');
+                body.find('.full-start-new__rate-line').append(customStatus);
             }
-            return originalEmit.apply(this, arguments);
-        };
+            var label = Lampa.Lang.translate('title_' + activeMark);
+            customStatus
+                .text(label)
+                .attr('class', 'full-start__custom-status full-start__custom-status--' + activeMark);
+        } else if (customStatus.length) {
+            customStatus.addClass('hide');
+        }
+    }
 
-        Lampa.Select.listener.follow('close', () => {
+    function buildMenuItems(items, card) {
+        var favStatus = card ? Lampa.Favorite.check(card) : {};
+        var result = [];
+
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            var where = item.where || item.type;
+
+            if (item.separator || FAVORITE_TYPES.indexOf(where) >= 0) {
+                result.push(item);
+                continue;
+            }
+
+            if (STATUS_TYPES.indexOf(where) >= 0) {
+                (function (capturedItem, capturedWhere) {
+                    result.push({
+                        title:  capturedItem.title,
+                        where:  capturedItem.where,
+                        type:   capturedItem.type,
+                        picked: favStatus[capturedWhere],
+                        onSelect: function () {
+                            if (card) Lampa.Favorite.toggle(capturedWhere, card);
+                        }
+                    });
+                })(item, where);
+            }
+        }
+
+        return result;
+    }
+
+    function init() {
+        if (!window.Lampa || !Lampa.Select || !Lampa.Select.listener) return;
+
+        addStyles();
+
+        // Track last card opened via context menu (card list → menu)
+        Lampa.Listener.follow('full', function (e) {
+            if (e.type === 'menu' && e.card) lastCardData = e.card;
+        });
+
+        Lampa.Select.listener.follow('close', function () {
             lastCardData = null;
         });
 
-        Lampa.Select.listener.follow('preshow', (e) => {
-            if ([
-                Lampa.Lang.translate('title_action'),
-                Lampa.Lang.translate('settings_input_links')
-            ].includes(e?.active?.title)) {
-                e.active.items = e.active.items
-                    .map((item) => status.includes(item.where) || status.includes(item.type) 
-                        ? {
-                            title: item.title,
-                            where: item.where,
-                            type: item.type,
-                            onSelect: (e) => {
-                                const active = Lampa.Activity.active()
-                                const card = (active && active.card) || lastCardData;
-                                if (card) {
-                                    Lampa.Favorite.toggle(item.where || item.type, card);
-                                }
-                            },
-                        } : item
-                    ).filter((item) => (
-                        item.separator 
-                        || favorite.includes(item.where) 
-                        || status.includes(item.where)
-                        || favorite.includes(item.type) 
-                        || status.includes(item.type)
-                    ));
-            }
+        Lampa.Select.listener.follow('preshow', function (e) {
+            var titleAction   = Lampa.Lang.translate('title_action');
+            var titleLinks    = Lampa.Lang.translate('settings_input_links');
+            if (!e || !e.active || (e.active.title !== titleAction && e.active.title !== titleLinks)) return;
+
+            var card = getActiveCard() || lastCardData;
+            e.active.items = buildMenuItems(e.active.items, card);
         });
+
+        Lampa.Listener.follow('full', function (e) {
+            if (e.type === 'start' || e.type === 'complite') updateFullStatus();
+        });
+
+        Lampa.Listener.follow('state:changed', function (e) {
+            if (e.target === 'favorite') updateFullStatus();
+        });
+
+        updateFullStatus();
     }
 
     if (window.appready) {
         init();
     } else {
-        Lampa.Listener.follow('app', (e) => {
-            if (e.type == 'ready') init();
+        Lampa.Listener.follow('app', function (e) {
+            if (e.type === 'ready') init();
         });
     }
 })();

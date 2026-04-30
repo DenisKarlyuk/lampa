@@ -5,33 +5,26 @@
     var FAVORITE_TYPES = ['book', 'like', 'wath', 'history'];
     var lastCardData = null;
 
-    var STATUS_COLORS = {
-        look:      '#5DBFF5',
-        viewed:    '#FFD028',
-        scheduled: '#ffffff',
-        thrown:    '#E54747',
-        continued: '#be95ff'
-    };
-
     function addStyles() {
         var rules = [
             '.full-start__custom-status {',
-            '    display: inline-block;',
-            '    font-size: 1.2em;',
-            '    padding: 0.3em;',
-            '    border-radius: 0.25em;',
-            '    border: 0.12em solid currentColor;',
-            '    background: rgba(0, 0, 0, 0.15);',
-            '    margin-right: 0.5em;',
-            '    white-space: nowrap;',
-            '    vertical-align: middle;',
-            '    font-weight: 500;',
+            ' display: inline-block;',
+            ' font-size: 0.95em;',
+            ' padding: 0.18em 0.65em;',
+            ' border-radius: 0.25em;',
+            ' border: 0.12em solid currentColor;',
+            ' background: rgba(0, 0, 0, 0.15);',
+            ' margin-right: 0.5em;',
+            ' white-space: nowrap;',
+            ' vertical-align: middle;',
+            ' line-height: 1.5;',
+            ' font-weight: 500;',
             '}',
             '.full-start__custom-status.hide { display: none; }',
-            '.full-start__custom-status--look      { color: #5DBFF5; }',
-            '.full-start__custom-status--viewed    { color: #FFD028; }',
+            '.full-start__custom-status--look { color: #5DBFF5; }',
+            '.full-start__custom-status--viewed { color: #FFD028; }',
             '.full-start__custom-status--scheduled { color: #ffffff; }',
-            '.full-start__custom-status--thrown    { color: #E54747; }',
+            '.full-start__custom-status--thrown { color: #E54747; }',
             '.full-start__custom-status--continued { color: #be95ff; }'
         ].join('\n');
 
@@ -47,8 +40,8 @@
         var active = Lampa.Activity.active();
         if (!active || active.component !== 'full' || !active.card) return;
 
-        var body       = $(active.activity.body);
-        var favStatus  = Lampa.Favorite.check(active.card);
+        var body = $(active.activity.body);
+        var favStatus = Lampa.Favorite.check(active.card);
         var activeMark = null;
 
         for (var i = 0; i < STATUS_TYPES.length; i++) {
@@ -90,9 +83,9 @@
             if (STATUS_TYPES.indexOf(where) >= 0) {
                 (function (capturedItem, capturedWhere) {
                     result.push({
-                        title:  capturedItem.title,
-                        where:  capturedItem.where,
-                        type:   capturedItem.type,
+                        title: capturedItem.title,
+                        where: capturedItem.where,
+                        type: capturedItem.type,
                         picked: favStatus[capturedWhere],
                         onSelect: function () {
                             if (card) Lampa.Favorite.toggle(capturedWhere, card);
@@ -110,18 +103,21 @@
 
         addStyles();
 
-        // Track last card opened via context menu (card list → menu)
-        Lampa.Listener.follow('full', function (e) {
-            if (e.type === 'menu' && e.card) lastCardData = e.card;
-        });
+        if (Lampa.Emit && Lampa.Emit.prototype && Lampa.Emit.prototype.emit) {
+            var originalEmit = Lampa.Emit.prototype.emit;
+            Lampa.Emit.prototype.emit = function (event) {
+                if (event === 'menu' && this.data) lastCardData = this.data;
+                return originalEmit.apply(this, arguments);
+            };
+        }
 
         Lampa.Select.listener.follow('close', function () {
             lastCardData = null;
         });
 
         Lampa.Select.listener.follow('preshow', function (e) {
-            var titleAction   = Lampa.Lang.translate('title_action');
-            var titleLinks    = Lampa.Lang.translate('settings_input_links');
+            var titleAction = Lampa.Lang.translate('title_action');
+            var titleLinks = Lampa.Lang.translate('settings_input_links');
             if (!e || !e.active || (e.active.title !== titleAction && e.active.title !== titleLinks)) return;
 
             var card = getActiveCard() || lastCardData;

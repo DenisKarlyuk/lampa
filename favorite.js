@@ -74,23 +74,18 @@
             var item = items[i];
             var where = item.where || item.type;
 
-            if (item.separator || FAVORITE_TYPES.indexOf(where) >= 0) {
-                result.push(item);
-                continue;
-            }
-
             if (STATUS_TYPES.indexOf(where) >= 0) {
-                (function (capturedItem, capturedWhere) {
-                    result.push({
-                        title: capturedItem.title,
-                        where: capturedItem.where,
-                        type: capturedItem.type,
-                        picked: favStatus[capturedWhere],
-                        onSelect: function () {
-                            if (card) Lampa.Favorite.toggle(capturedWhere, card);
-                        }
-                    });
-                })(item, where);
+                result.push({
+                    title: item.title,
+                    where: item.where,
+                    type: item.type,
+                    picked: favStatus[where],
+                    onSelect: function () {
+                        if (card) Lampa.Favorite.toggle(where, card);
+                    }
+                });
+            } else {
+                result.push(item);
             }
         }
 

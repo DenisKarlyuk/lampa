@@ -41,15 +41,7 @@
 
         var body = $(active.activity.body);
         var favStatus = Lampa.Favorite.check(active.card);
-        var activeMark = null;
-
-        for (var i = 0; i < STATUS_TYPES.length; i++) {
-            if (favStatus[STATUS_TYPES[i]]) {
-                activeMark = STATUS_TYPES[i];
-                break;
-            }
-        }
-
+        var [activeMark] = Object.entries(favStatus).find(([status, value]) => typeof value === 'number') || [];
         var customStatus = body.find('.full-start__custom-status');
 
         if (activeMark) {
@@ -61,35 +53,30 @@
             customStatus
                 .text(label)
                 .attr('class', 'full-start__custom-status full-start__custom-status--' + activeMark);
-        } else if (customStatus.length) {
+        } else {
             customStatus.addClass('hide');
         }
     }
 
     function buildMenuItems(items, card) {
         var favStatus = card ? Lampa.Favorite.check(card) : {};
-        var result = [];
 
-        for (var i = 0; i < items.length; i++) {
-            var item = items[i];
-            var where = item.where || item.type;
+        return items.map((item) => {
+            const type = item.type || item.where;
 
-            if (STATUS_TYPES.indexOf(where) >= 0) {
-                result.push({
+            if (STATUS_TYPES.includes(type)) {
+                return {
                     title: item.title,
                     where: item.where,
                     type: item.type,
-                    picked: favStatus[where],
+                    picked: favStatus[item.type || item.where],
                     onSelect: function () {
-                        if (card) Lampa.Favorite.toggle(where, card);
+                        if (card) Lampa.Favorite.toggle(item.type || item.where, card);
                     }
-                });
-            } else {
-                result.push(item);
+                }
             }
-        }
-
-        return result;
+            return item;
+        });
     }
 
     function init() {

@@ -81,58 +81,8 @@
         
         this.playlist = [];
 
-        // Слушатель для инъекции переводов в панель плеера
-        this.playerListener = (e) => {
-            if (e.type === 'loadeddata') {
-                let current_item = Lampa.Player.playlist()[Lampa.Player.position()];
-                
-                // Проверяем, что это видео из нашего плагина и у него есть переводы
-                if (current_item && current_item.videoseed && current_item.translations) {
-                    let trackNames = Object.keys(current_item.translations);
-                    if (trackNames.length > 0) {
-                        let tracks = [];
-                        trackNames.forEach((voiceName) => {
-                            tracks.push({
-                                title: voiceName, // title нужен для отрисовки в Lampa.Select
-                                name: voiceName,
-                                selected: current_item.info === voiceName
-                            });
-                        });
-
-                        // Находим кнопку аудиодорожек в DOM, открываем ее и вешаем свой селект
-                        setTimeout(() => {
-                            let tracksBtn = $('.player-panel__tracks');
-                            if (tracksBtn.length) {
-                                tracksBtn.removeClass('hide');
-                                tracksBtn.off('hover:enter').on('hover:enter', () => {
-                                    let enabled = Lampa.Controller.enabled().name;
-                                    Lampa.Select.show({
-                                        title: 'Перевод',
-                                        items: tracks,
-                                        onSelect: (a) => {
-                                            tracks.forEach(t => t.selected = false);
-                                            a.selected = true;
-                                            Lampa.Controller.toggle(enabled);
-                                            // Запускаем смену перевода
-                                            this.switchTranslation(current_item, a.name);
-                                        },
-                                        onBack: () => {
-                                            Lampa.Controller.toggle(enabled);
-                                        }
-                                    });
-                                });
-                            }
-                        }, 500);
-                    }
-                }
-            }
-        };
-
         this.create = function () {
             this.activity.loader(true);
-
-            // Подписываемся на события плеера
-            Lampa.Player.listener.follow('loadeddata', this.playerListener);
 
             // Удаляем лупу поиска
             filter.render().find('.filter--search').remove();
@@ -327,29 +277,22 @@
                     
                     videoKeys.forEach(epNum => {
                         let video = sData.videos[epNum];
-                        let allTranslations = {};
-                        
-                        // Собираем все доступные озвучки для серии
-                        if (video.translation_iframe) {
-                            Object.keys(video.translation_iframe).forEach(k => allTranslations[k] = video.translation_iframe[k].iframe);
-                        } else if (sData.translation_iframe) {
-                            Object.keys(sData.translation_iframe).forEach(k => allTranslations[k] = sData.translation_iframe[k].iframe);
+                        let epUrl = '';
+                        if (video.translation_iframe && video.translation_iframe[selectedVoice]) {
+                            epUrl = video.translation_iframe[selectedVoice].iframe;
+                        } else if (video.iframe) {
+                            epUrl = video.iframe;
+                        } else if (sData.translation_iframe && sData.translation_iframe[selectedVoice]) {
+                            epUrl = sData.translation_iframe[selectedVoice].iframe;
                         }
 
-                        if (Object.keys(allTranslations).length === 0 && video.iframe) {
-                            allTranslations['По умолчанию'] = video.iframe;
-                        }
-
-                        let epUrl = allTranslations[selectedVoice] || allTranslations['По умолчанию'] || video.iframe;
-                        let infoVoice = allTranslations[selectedVoice] ? selectedVoice : (Object.keys(allTranslations)[0] || 'По умолчанию');
                         let timeString = video.time ? video.time : (runtime ? Lampa.Utils.secondsToTime(runtime * 60, true) : '');
 
                         if (epUrl) {
                             eps.push({
                                 title: video.title || video.name || Lampa.Lang.translate('videoseed_episode') + ' ' + epNum,
-                                info: infoVoice,
+                                info: selectedVoice || 'По умолчанию',
                                 url: epUrl,
-                                allTranslations: allTranslations,
                                 epNum: parseInt(epNum),
                                 preview: video.preview || '',
                                 time: timeString
@@ -357,20 +300,12 @@
                         }
                     });
                 } else if (sData.translation_iframe && sData.translation_iframe[selectedVoice]) {
-                    let allTranslations = {};
-                    Object.keys(sData.translation_iframe).forEach(k => allTranslations[k] = sData.translation_iframe[k].iframe);
-
-                    if (Object.keys(allTranslations).length === 0 && sData.iframe) {
-                        allTranslations['По умолчанию'] = sData.iframe;
-                    }
-
                     let timeString = sData.time ? sData.time : (runtime ? Lampa.Utils.secondsToTime(runtime * 60, true) : '');
 
                     eps.push({
                         title: sData.name || Lampa.Lang.translate('videoseed_season') + ' ' + seasons[choice.season],
                         info: selectedVoice,
                         url: sData.translation_iframe[selectedVoice].iframe,
-                        allTranslations: allTranslations,
                         epNum: null,
                         preview: sData.preview || currentData.preview || '',
                         time: timeString
@@ -383,25 +318,20 @@
                 }
             } else {
                 let selectedVoice = voices[choice.voice];
-                let allTranslations = {};
-                
-                if (currentData.translation_iframe) {
-                    Object.keys(currentData.translation_iframe).forEach(k => allTranslations[k] = currentData.translation_iframe[k].iframe);
-                }
-                if (Object.keys(allTranslations).length === 0 && currentData.iframe) {
-                    allTranslations['По умолчанию'] = currentData.iframe;
+                let mUrl = '';
+                if (currentData.translation_iframe && currentData.translation_iframe[selectedVoice]) {
+                    mUrl = currentData.translation_iframe[selectedVoice].iframe;
+                } else if (currentData.iframe) {
+                    mUrl = currentData.iframe;
                 }
 
-                let mUrl = allTranslations[selectedVoice] || allTranslations['По умолчанию'] || currentData.iframe;
-                let infoVoice = allTranslations[selectedVoice] ? selectedVoice : (Object.keys(allTranslations)[0] || 'По умолчанию');
                 let timeString = currentData.time ? currentData.time : (runtime ? Lampa.Utils.secondsToTime(runtime * 60, true) : '');
 
                 if (mUrl) {
                     eps.push({
                         title: currentData.name || currentMovie.title || currentMovie.name,
-                        info: infoVoice,
+                        info: selectedVoice || 'По умолчанию',
                         url: mUrl,
-                        allTranslations: allTranslations,
                         epNum: null,
                         preview: currentData.preview || '',
                         time: timeString
@@ -419,20 +349,20 @@
                 let hash = Lampa.Utils.hash(isSerial ? [seasonNumber, seasonNumber > 10 ? ':' : '', epNumForHash, currentMovie.original_title].join('') : currentMovie.original_title);
                 
                 let item = {
-                    videoseed: true, // Маркер для идентификации наших элементов плейлиста в плеере
                     title: ep.title,
                     movie: currentMovie,
                     iframe_url: ep.url,
-                    translations: ep.allTranslations, // Передаем все доступные озвучки для серии
-                    info: ep.info,
                     timeline: Lampa.Timeline.view(hash)
                 };
 
+                // ВАЖНО: Мы переопределяем url как функцию, и когда плеер её вызовет для следующей серии - 
+                // мы получим прямой HLS поток и перезапишем item.url в строку, 
+                // что бы Lampa смогла отследить _position
                 item.url = (call) => {
                     let extract_url = MY_API_BASE + 'extract?url=' + encodeURIComponent(item.iframe_url);
                     network.silent(extract_url, (res) => {
                         if (res && res.success && res.src) {
-                            item.url = res.src.trim();
+                            item.url = res.src.trim(); // Перезаписываем в строку
                             call();
                         } else {
                             Lampa.Noty.show('Не удалось извлечь ссылку на видео');
@@ -465,89 +395,6 @@
             }, 50);
         };
 
-        // Логика переключения перевода прямо из плеера
-        this.switchTranslation = function(item, newVoiceName) {
-            let new_iframe = item.translations[newVoiceName];
-            if (!new_iframe) return;
-
-            // Запоминаем текущее время и состояние паузы
-            let videoEl = Lampa.Player.video();
-            let current_time = videoEl ? videoEl.currentTime : 0;
-            let current_paused = videoEl ? videoEl.paused : false;
-
-            if (videoEl) videoEl.pause();
-
-            // Обновляем фильтр в интерфейсе плагина
-            let voiceIndex = voices.indexOf(newVoiceName);
-            if (voiceIndex !== -1) {
-                choice.voice = voiceIndex;
-                filter.chosen('filter', [newVoiceName]);
-            }
-
-            // Массовое обновление всех серий в плейлисте
-            this.playlist.forEach(pl_item => {
-                if (pl_item.videoseed && pl_item.translations && pl_item.translations[newVoiceName]) {
-                    pl_item.info = newVoiceName;
-                    pl_item.iframe_url = pl_item.translations[newVoiceName];
-                    
-                    // Возвращаем url к исходной функции для динамического извлечения ссылки (когда зритель переключит серию)
-                    pl_item.url = (call) => {
-                        let extract_url = MY_API_BASE + 'extract?url=' + encodeURIComponent(pl_item.iframe_url);
-                        network.silent(extract_url, (res) => {
-                            if (res && res.success && res.src) {
-                                pl_item.url = res.src.trim();
-                                call();
-                            } else {
-                                Lampa.Noty.show('Не удалось извлечь ссылку на видео');
-                                pl_item.url = '';
-                                call();
-                            }
-                        }, () => {
-                            Lampa.Noty.show('Ошибка соединения при извлечении видео');
-                            pl_item.url = '';
-                            call();
-                        });
-                    };
-                }
-            });
-
-            // Запускаем переключение текущей серии немедленно
-            Lampa.Loading.start(() => { network.clear(); Lampa.Loading.stop(); });
-            
-            let extract_url = MY_API_BASE + 'extract?url=' + encodeURIComponent(new_iframe);
-            network.silent(extract_url, (res) => {
-                Lampa.Loading.stop();
-                if (res && res.success && res.src) {
-                    item.url = res.src.trim();
-                    
-                    // Перезапускаем плеер с тем же элементом плейлиста
-                    Lampa.Player.play(item);
-                    Lampa.Player.playlist(this.playlist);
-                    
-                    // Восстанавливаем сохраненное время при готовности видео
-                    let newVideoEl = Lampa.Player.video();
-                    if (newVideoEl) {
-                        let restoreTime = function() {
-                            newVideoEl.removeEventListener('loadeddata', restoreTime);
-                            newVideoEl.currentTime = current_time;
-                            if (!current_paused) {
-                                let playPromise = newVideoEl.play();
-                                if (playPromise !== undefined) playPromise.catch(() => {});
-                            } else {
-                                newVideoEl.pause();
-                            }
-                        };
-                        newVideoEl.addEventListener('loadeddata', restoreTime);
-                    }
-                } else {
-                    Lampa.Noty.show('Не удалось извлечь ссылку для перевода');
-                }
-            }, () => {
-                Lampa.Loading.stop();
-                Lampa.Noty.show('Ошибка соединения при извлечении видео');
-            });
-        };
-
         this.appendCard = function (data, index, showEpNum) {
             let html = Lampa.Template.get('videoseed_card', {
                 title: data.title,
@@ -568,40 +415,32 @@
             let img = imgBox.find('img')[0];
             let loader = html.find('.vs-prestige__loader');
             
-            let fallbacks = [];
-            if (data.preview) fallbacks.push(data.preview);
-            if (currentData && currentData.poster) fallbacks.push(currentData.poster);
-            if (currentMovie.backdrop_path) fallbacks.push(Lampa.TMDB.image('t/p/w500' + currentMovie.backdrop_path));
-            if (currentMovie.poster_path) fallbacks.push(Lampa.TMDB.image('t/p/w300' + currentMovie.poster_path));
-
-            fallbacks = [...new Set(fallbacks)];
-            if (fallbacks.length === 0) fallbacks.push('./img/img_broken.svg');
-
-            let currentImgIndex = 0;
-
             img.onerror = function() {
-                currentImgIndex++;
-                if (currentImgIndex < fallbacks.length) {
-                    img.src = fallbacks[currentImgIndex];
-                } else {
-                    img.src = './img/img_broken.svg';
-                    img.onerror = null;
-                }
+                img.src = './img/img_broken.svg';
             };
-
             img.onload = function() {
                 imgBox.addClass('vs-prestige__img--loaded');
                 loader.remove();
                 if (showEpNum && data.epNum !== null) {
                     let ep_fmt = data.epNum < 10 ? '0' + data.epNum : data.epNum;
-                    if (imgBox.find('.vs-prestige__episode-number').length === 0) {
-                        imgBox.append(`<div class="vs-prestige__episode-number">${ep_fmt}</div>`);
-                    }
+                    imgBox.append(`<div class="vs-prestige__episode-number">${ep_fmt}</div>`);
                 }
             };
 
-            img.src = fallbacks[0];
+            let poster = data.preview;
+            if (!poster) {
+                if (currentMovie.backdrop_path) {
+                    poster = Lampa.TMDB.image('t/p/w500' + currentMovie.backdrop_path);
+                } else if (currentMovie.poster_path) {
+                    poster = Lampa.TMDB.image('t/p/w300' + currentMovie.poster_path);
+                } else if (currentData && currentData.poster) {
+                    poster = currentData.poster;
+                }
+            }
 
+            img.src = poster || './img/img_broken.svg';
+
+            // Маркер просмотренного
             let viewed = Lampa.Storage.cache('online_view', 5000, []);
             if (viewed.indexOf(hash_behold) !== -1) {
                 html.find('.vs-prestige__img').append('<div class="vs-prestige__viewed">' + Lampa.Template.get('icon_viewed', {}, true) + '</div>');
@@ -627,6 +466,7 @@
                 });
 
                 if (typeof play_item.url === 'function') {
+                    // Вызываем функцию item.url(), она сама сделает API запрос и заменит play_item.url на строку
                     play_item.url(() => {
                         Lampa.Loading.stop();
                         if (play_item.url) {
@@ -658,6 +498,7 @@
             return files.render();
         };
 
+        // Логика за навигация 
         let nav = (dir) => {
             let filterBtns = files.render().find('.filter--sort, .filter--filter').filter(':visible').toArray();
             let listItems = scroll.render().find('.selector').filter(':visible').toArray();
@@ -768,9 +609,6 @@
             network.clear();
             files.destroy();
             scroll.destroy();
-            if (this.playerListener) {
-                Lampa.PlayerVideo.listener.remove('canplay', this.playerListener);
-            }
         };
     }
 

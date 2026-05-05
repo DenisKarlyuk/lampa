@@ -1,7 +1,8 @@
 (function () {
     'use strict';
 
-    const API_TOKEN = 'f9dd8f6412d0c51fbd7c817216efa81c';
+    const MY_API_BASE = 'http://192.168.31.24:3000/api/';
+    let API_TOKEN = '';
 
     Lampa.Lang.add({
         videoseed_title: { ru: 'VideoSeed', uk: 'VideoSeed', en: 'VideoSeed', zh: 'VideoSeed', bg: 'VideoSeed' },
@@ -123,45 +124,65 @@
             let itemType = isSerial ? 'serial' : 'movie';
             let query = (currentMovie.title || currentMovie.name || '');
 
-            let url = 'https://api.videoseed.tv/apiv2.php?item=' + itemType + '&token=' + encodeURIComponent(API_TOKEN);
+            let doSearch = () => {
+                let url = 'https://api.videoseed.tv/apiv2.php?item=' + itemType + '&token=' + encodeURIComponent(API_TOKEN);
 
-            if (currentMovie.kinopoisk_id) {
-                url += '&kp=' + currentMovie.kinopoisk_id;
-            } else if (currentMovie.imdb_id) {
-                url += '&imdb=' + currentMovie.imdb_id;
-            } else {
-                url += '&q=' + encodeURIComponent(query);
-            }
-            url += '&sort_by=kp%20asc';
-
-            network.timeout(15000);
-            network.silent(url, (found) => {
-                if (this.activity && this.activity.loader) this.activity.loader(false);
-
-                if (found.status !== 'success' || !found.data || !found.data.length) {
-                    this.showEmpty(Lampa.Lang.translate('videoseed_nolink'));
-                    return;
-                }
-
-                let items = found.data;
                 if (currentMovie.kinopoisk_id) {
-                    let exact = items.filter(item => String(item.id_kp) === String(currentMovie.kinopoisk_id));
-                    if (exact.length) items = exact;
+                    url += '&kp=' + currentMovie.kinopoisk_id;
+                } else if (currentMovie.imdb_id) {
+                    url += '&imdb=' + currentMovie.imdb_id;
+                } else {
+                    url += '&q=' + encodeURIComponent(query);
                 }
+                url += '&sort_by=kp%20asc';
 
-                if (!items.length) {
+                network.timeout(15000);
+                network.silent(url, (found) => {
+                    if (this.activity && this.activity.loader) this.activity.loader(false);
+
+                    if (found.status !== 'success' || !found.data || !found.data.length) {
+                        this.showEmpty(Lampa.Lang.translate('videoseed_nolink'));
+                        return;
+                    }
+
+                    let items = found.data;
+                    if (currentMovie.kinopoisk_id) {
+                        let exact = items.filter(item => String(item.id_kp) === String(currentMovie.kinopoisk_id));
+                        if (exact.length) items = exact;
+                    }
+
+                    if (!items.length) {
+                        this.showEmpty(Lampa.Lang.translate('videoseed_nolink'));
+                        return;
+                    }
+
+                    currentData = items[0];
+                    choice.season = 0;
+                    choice.voice = 0;
+                    this.updateData();
+                }, () => {
+                    if (this.activity && this.activity.loader) this.activity.loader(false);
                     this.showEmpty(Lampa.Lang.translate('videoseed_nolink'));
-                    return;
-                }
+                }, false, { dataType: 'json' });
+            };
 
-                currentData = items[0];
-                choice.season = 0;
-                choice.voice = 0;
-                this.updateData();
-            }, () => {
-                if (this.activity && this.activity.loader) this.activity.loader(false);
-                this.showEmpty(Lampa.Lang.translate('videoseed_nolink'));
-            }, false, { dataType: 'json' });
+            if (!API_TOKEN) {
+                network.timeout(5000);
+                network.silent(MY_API_BASE + 'token', (res) => {
+                    if (res && res.token) {
+                        API_TOKEN = res.token;
+                        doSearch();
+                    } else {
+                        if (this.activity && this.activity.loader) this.activity.loader(false);
+                        this.showEmpty('Не удалось получить токен авторизации');
+                    }
+                }, () => {
+                    if (this.activity && this.activity.loader) this.activity.loader(false);
+                    this.showEmpty('Ошибка соединения при получении токена');
+                });
+            } else {
+                doSearch();
+            }
         };
 
         this.updateData = function () {
@@ -325,7 +346,7 @@
                     title: ep.title,
                     movie: currentMovie,
                     url: (call) => {
-                        let extract_url = 'http://192.168.31.24:3000/api/extract?url=' + encodeURIComponent(ep.url);
+                        let extract_url = MY_API_BASE + 'extract?url=' + encodeURIComponent(ep.url);
                         network.silent(extract_url, (res) => {
                             if(res && res.success && res.src) {
                                 call(res.src.trim());
@@ -339,7 +360,7 @@
                         });
                     },
                     timeline: Lampa.Timeline.view(hash),
-                    iframe_url: ep.url // сохраняем исходник
+                    iframe_url: ep.url
                 });
             });
 
@@ -391,7 +412,7 @@
                 }
             };
 
-            // Приоритет превью (если нет скриншота - даем фон TMDB, либо постер)
+            // Приоритет превью: скриншот API -> backdrop TMDB -> poster TMDB -> poster API
             let poster = data.preview;
             if (!poster) {
                 if (currentMovie.backdrop_path) {
@@ -428,7 +449,7 @@
                     Lampa.Loading.stop();
                 });
 
-                let extract_url = 'http://192.168.31.24:3000/api/extract?url=' + encodeURIComponent(data.url);
+                let extract_url = MY_API_BASE + 'extract?url=' + encodeURIComponent(data.url);
                 network.silent(extract_url, (res) => {
                     Lampa.Loading.stop();
                     if(res && res.success && res.src) {

@@ -93,20 +93,34 @@
                         let tracks = [];
                         trackNames.forEach((voiceName) => {
                             tracks.push({
+                                title: voiceName, // title нужен для отрисовки в Lampa.Select
                                 name: voiceName,
-                                language: 'RUS',
-                                label: voiceName,
-                                selected: current_item.info === voiceName,
-                                onSelect: () => {
-                                    this.switchTranslation(current_item, voiceName);
-                                }
+                                selected: current_item.info === voiceName
                             });
                         });
 
-                        // Добавляем небольшую задержку, чтобы нативный HLS-парсер не перетер наши треки
+                        // Находим кнопку аудиодорожек в DOM, открываем ее и вешаем свой селект
                         setTimeout(() => {
-                            if (Lampa.PlayerPanel && Lampa.PlayerPanel.setTracks) {
-                                Lampa.PlayerPanel.setTracks(tracks);
+                            let tracksBtn = $('.player-panel__tracks');
+                            if (tracksBtn.length) {
+                                tracksBtn.removeClass('hide');
+                                tracksBtn.off('hover:enter').on('hover:enter', () => {
+                                    let enabled = Lampa.Controller.enabled().name;
+                                    Lampa.Select.show({
+                                        title: 'Перевод',
+                                        items: tracks,
+                                        onSelect: (a) => {
+                                            tracks.forEach(t => t.selected = false);
+                                            a.selected = true;
+                                            Lampa.Controller.toggle(enabled);
+                                            // Запускаем смену перевода
+                                            this.switchTranslation(current_item, a.name);
+                                        },
+                                        onBack: () => {
+                                            Lampa.Controller.toggle(enabled);
+                                        }
+                                    });
+                                });
                             }
                         }, 500);
                     }
@@ -755,7 +769,7 @@
             files.destroy();
             scroll.destroy();
             if (this.playerListener) {
-                Lampa.Player.listener.remove('loadeddata', this.playerListener);
+                Lampa.PlayerVideo.listener.remove('canplay', this.playerListener);
             }
         };
     }

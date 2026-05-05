@@ -84,10 +84,10 @@
         this.create = function () {
             this.activity.loader(true);
 
-            // Удаляем кнопку поиска (лупу) из фильтра
+            // Удаляем лупу поиска
             filter.render().find('.filter--search').remove();
 
-            // Переименовываем стандартные кнопки фильтра Lampa под Сезон и Перевод
+            // Переименовываем фильтры
             filter.render().find('.filter--sort span').text(Lampa.Lang.translate('videoseed_season'));
             filter.render().find('.filter--filter span').text(Lampa.Lang.translate('videoseed_translation'));
 
@@ -95,14 +95,13 @@
                 this.start();
             };
 
-            // Обработка выбора из нативного Lampa фильтра (плоские массивы)
             filter.onSelect = (type, a, b) => {
-                if (type === 'sort') { // Кнопка Сезон
+                if (type === 'sort') { 
                     choice.season = a.index;
-                    choice.voice = 0; // Сбрасываем перевод при смене сезона
+                    choice.voice = 0; 
                     this.updateData();
                     setTimeout(Lampa.Select.close, 10);
-                } else if (type === 'filter') { // Кнопка Перевод
+                } else if (type === 'filter') { 
                     choice.voice = a.index;
                     this.updateData();
                     setTimeout(Lampa.Select.close, 10);
@@ -248,6 +247,13 @@
             } else {
                 filter.set('filter', []);
             }
+            
+            // Запоминаем фокус на кнопках фильтров
+            setTimeout(() => {
+                filter.render().find('.selector').off('hover:focus').on('hover:focus', (e) => {
+                    last = e.target;
+                });
+            }, 50);
         };
 
         this.renderContent = function () {
@@ -342,26 +348,35 @@
                 let seasonNumber = seasons[choice.season] ? parseInt(seasons[choice.season]) : 1;
                 let hash = Lampa.Utils.hash(isSerial ? [seasonNumber, seasonNumber > 10 ? ':' : '', epNumForHash, currentMovie.original_title].join('') : currentMovie.original_title);
                 
-                this.playlist.push({
+                let item = {
                     title: ep.title,
                     movie: currentMovie,
-                    url: (call) => {
-                        let extract_url = MY_API_BASE + 'extract?url=' + encodeURIComponent(ep.url);
-                        network.silent(extract_url, (res) => {
-                            if(res && res.success && res.src) {
-                                call(res.src.trim());
-                            } else {
-                                Lampa.Noty.show('Не удалось извлечь ссылку на видео');
-                                call('');
-                            }
-                        }, () => {
-                            Lampa.Noty.show('Ошибка соединения при извлечении видео');
-                            call('');
-                        });
-                    },
-                    timeline: Lampa.Timeline.view(hash),
-                    iframe_url: ep.url
-                });
+                    iframe_url: ep.url,
+                    timeline: Lampa.Timeline.view(hash)
+                };
+
+                // ВАЖНО: Мы переопределяем url как функцию, и когда плеер её вызовет для следующей серии - 
+                // мы получим прямой HLS поток и перезапишем item.url в строку, 
+                // что бы Lampa смогла отследить _position
+                item.url = (call) => {
+                    let extract_url = MY_API_BASE + 'extract?url=' + encodeURIComponent(item.iframe_url);
+                    network.silent(extract_url, (res) => {
+                        if (res && res.success && res.src) {
+                            item.url = res.src.trim(); // Перезаписываем в строку
+                            call();
+                        } else {
+                            Lampa.Noty.show('Не удалось извлечь ссылку на видео');
+                            item.url = '';
+                            call();
+                        }
+                    }, () => {
+                        Lampa.Noty.show('Ошибка соединения при извлечении видео');
+                        item.url = '';
+                        call();
+                    });
+                };
+
+                this.playlist.push(item);
             });
 
             // Выводим карточки
@@ -412,7 +427,6 @@
                 }
             };
 
-            // Приоритет превью: скриншот API -> backdrop TMDB -> poster TMDB -> poster API
             let poster = data.preview;
             if (!poster) {
                 if (currentMovie.backdrop_path) {
@@ -444,28 +458,29 @@
                     }
                 }
                 
+                let play_item = this.playlist[index];
+                
                 Lampa.Loading.start(() => {
                     network.clear();
                     Lampa.Loading.stop();
                 });
 
-                let extract_url = MY_API_BASE + 'extract?url=' + encodeURIComponent(data.url);
-                network.silent(extract_url, (res) => {
+                if (typeof play_item.url === 'function') {
+                    // Вызываем функцию item.url(), она сама сделает API запрос и заменит play_item.url на строку
+                    play_item.url(() => {
+                        Lampa.Loading.stop();
+                        if (play_item.url) {
+                            Lampa.Player.play(play_item);
+                            Lampa.Player.playlist(this.playlist);
+                        }
+                    });
+                } else {
                     Lampa.Loading.stop();
-                    if(res && res.success && res.src) {
-                        let stream_url = res.src.trim();
-                        let play_data = Object.assign({}, this.playlist[index]);
-                        play_data.url = stream_url;
-                        
-                        Lampa.Player.play(play_data);
+                    if (play_item.url) {
+                        Lampa.Player.play(play_item);
                         Lampa.Player.playlist(this.playlist);
-                    } else {
-                        Lampa.Noty.show('Не удалось извлечь ссылку на видео');
                     }
-                }, () => {
-                    Lampa.Loading.stop();
-                    Lampa.Noty.show('Ошибка соединения при извлечении видео');
-                });
+                }
             }).on('hover:focus', (e) => {
                 last = e.target;
                 scroll.update($(e.target), true);
@@ -483,6 +498,83 @@
             return files.render();
         };
 
+        // Логика за навигация 
+        let nav = (dir) => {
+            let filterBtns = files.render().find('.filter--sort, .filter--filter').filter(':visible').toArray();
+            let listItems = scroll.render().find('.selector').filter(':visible').toArray();
+            
+            let collection = filterBtns.concat(listItems);
+            if (!collection.length) return false;
+            
+            let current = document.activeElement;
+            if (!current || !current.classList.contains('selector')) current = last;
+            
+            let currentIdx = collection.indexOf(current);
+            if (currentIdx === -1) {
+                Lampa.Controller.collectionFocus(collection[0], files.render());
+                return true;
+            }
+
+            if (dir === 'left') {
+                if (filterBtns.includes(current)) {
+                    let idx = filterBtns.indexOf(current);
+                    if (idx > 0) {
+                        Lampa.Controller.collectionFocus(filterBtns[idx - 1], files.render());
+                        return true;
+                    }
+                }
+                return false;
+            }
+            
+            if (dir === 'right') {
+                if (filterBtns.includes(current)) {
+                    let idx = filterBtns.indexOf(current);
+                    if (idx < filterBtns.length - 1) {
+                        Lampa.Controller.collectionFocus(filterBtns[idx + 1], files.render());
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            if (dir === 'up') {
+                if (currentIdx > 0) {
+                    if (listItems.includes(current)) {
+                        let idx = listItems.indexOf(current);
+                        if (idx === 0) {
+                            if (filterBtns.length) {
+                                Lampa.Controller.collectionFocus(filterBtns[0], files.render());
+                                return true;
+                            }
+                        } else {
+                            Lampa.Controller.collectionFocus(listItems[idx - 1], scroll.render());
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+            
+            if (dir === 'down') {
+                if (currentIdx < collection.length - 1) {
+                    if (filterBtns.includes(current)) {
+                        if (listItems.length) {
+                            Lampa.Controller.collectionFocus(listItems[0], scroll.render());
+                            return true;
+                        }
+                    } else if (listItems.includes(current)) {
+                        let idx = listItems.indexOf(current);
+                        if (idx < listItems.length - 1) {
+                            Lampa.Controller.collectionFocus(listItems[idx + 1], scroll.render());
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+            return false;
+        };
+
         this.start = function () {
             if (Lampa.Activity.active().activity !== this.activity) return;
             Lampa.Controller.add('content', {
@@ -491,21 +583,16 @@
                     Lampa.Controller.collectionFocus(last || false, scroll.render());
                 },
                 up: function () {
-                    if (Lampa.Navigator.canmove('up')) {
-                        Lampa.Navigator.move('up');
-                    } else Lampa.Controller.toggle('head');
+                    if (!nav('up')) Lampa.Controller.toggle('head');
                 },
                 down: function () {
-                    if (Lampa.Navigator.canmove('down')) {
-                        Lampa.Navigator.move('down');
-                    }
+                    nav('down');
                 },
                 left: function () {
-                    if (Lampa.Navigator.canmove('left')) Lampa.Navigator.move('left');
-                    else Lampa.Controller.toggle('menu');
+                    if (!nav('left')) Lampa.Controller.toggle('menu');
                 },
                 right: function () {
-                    if (Lampa.Navigator.canmove('right')) Lampa.Navigator.move('right');
+                    nav('right');
                 },
                 back: this.back.bind(this)
             });
